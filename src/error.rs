@@ -12,19 +12,25 @@ pub enum ContractError {
     #[error("Escrow expired ")]
     Expired {},
 
+    #[error("Escrow not expired")]
+    NotExpired {},
+
     #[error("Buying Utility Over Slippages")]
     BuyingUtilityOverSlippages {},
     
-    #[error("FEE_MORE_THAN_AMOUNT")]
+    #[error("Insufficient amount")]
     InsufficientToken {},
 
-    #[error("FEE_MORE_THAN_AMOUNT")]
+    #[error("Fee more than amount")]
     InsufficientEthToSwap {},
 
-    #[error("PoolAndTokenMismatch")]
+    #[error("Insufficient Output Amount")]
+    InsufficientOutputAmount {},
+
+    #[error("Pool And Token Mismatch")]
     PoolAndTokenMismatch {},
 
-    #[error("NativeInputZero")]
+    #[error("Native Input Zero")]
     NativeInputZero {},
 
     #[error("TokenTypeMismatch")]
@@ -32,7 +38,4 @@ pub enum ContractError {
 
     #[error("Cw20InputZero")]
     Cw20InputZero {},
-
-    #[error("Expired")]
-    NotExpired {},
 }
