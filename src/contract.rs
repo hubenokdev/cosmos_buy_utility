@@ -19,9 +19,21 @@ pub fn instantiate(
     _msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
     let state = State {
+        // arbiter: deps.api.addr_validate(&msg.arbiter)?,
+        // recipient: deps.api.addr_validate(&msg.recipient)?,
+        // source: info.sender.clone(),
+        // end_height: msg.end_height,
+        // end_time: msg.end_time,
         owner: info.sender.clone(),
         pending_platform_fee: Uint128::zero(),
     };
+
+    // if state.is_expired(&env) {
+    //     return Err(ContractError::Expired {
+    //         // end_height: msg.end_height,
+    //         // end_time: msg.end_time,
+    //     });
+    // }
 
     config(deps.storage).save(&state)?;
     Ok(Response::default())
@@ -39,8 +51,8 @@ pub fn execute(
         ExecuteMsg::WithdrawFee { to, amount } => try_withdraw_fee(deps, &mut state, info, to, amount),
         ExecuteMsg::SetAdmin { new_admin } => try_set_admin(deps, &mut state, info, new_admin),
         ExecuteMsg::SetBotRole { new_bot, enabled } => try_set_bot_role(deps, state, info, new_bot, enabled),
-        ExecuteMsg::BuyToken {juno_amount, token_amount_per_native, slippage_bips, to, pool_address, platform_fee_bips, gas_estimate, deadline} => 
-                buy_token(deps, &mut state, info, env, juno_amount, token_amount_per_native, slippage_bips, to, pool_address, platform_fee_bips, gas_estimate, deadline),
+        ExecuteMsg::BuyToken {juno_amount, token_amount_per_native, slippage_bips, to, router, platform_fee_bips, gas_estimate, deadline} => 
+                buy_token(deps, &mut state, info, env, juno_amount, token_amount_per_native, slippage_bips, to, router, platform_fee_bips, gas_estimate, deadline),
     }
 }
 
@@ -110,7 +122,7 @@ fn buy_token(
     env: Env,
     juno_amount: Uint128,
     //token: Addr,
-    token_amount_per_native: Uint128,
+    _token_amount_per_native: Uint128,
     slippage_bips: Uint128,
     recipient: Addr,
     pool: Addr,
@@ -118,6 +130,7 @@ fn buy_token(
     gas_estimate: Uint128,
     deadline: Uint64,
 ) -> Result<Response, ContractError> {
+
 
     if !BOT_ROLES.has(deps.storage, info.sender.clone()) {
         return Err(ContractError::Unauthorized {});    
@@ -139,12 +152,12 @@ fn buy_token(
         return Err(ContractError::InsufficientToken{});
     }
 
-    let mut _juno_amount = juno_amount - gas_estimate;
+    let mut _juno_amount = juno_amount;
+    _juno_amount -= gas_estimate;
 
     let platform_fee = platform_fee_bips * juno_amount / Uint128::from(10000u128);
     state.pending_platform_fee += platform_fee;
     //let approxTxFee = gas_estimate * tx.gasprice;
-    let amount_out_min = _juno_amount * token_amount_per_native * (Uint128::from(10000u128) - slippage_bips) / Uint128::from(10000000000u128);
     _juno_amount -= platform_fee;
 
     if juno_amount <= Uint128::zero() {
@@ -158,7 +171,6 @@ fn buy_token(
             , pool
             , Denom::Native(String::from("ujuno"))
             , juno_amount
-            , amount_out_min
             , recipient)?;
     messages.append(&mut messages_swap);    
 

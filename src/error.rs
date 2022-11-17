@@ -18,19 +18,16 @@ pub enum ContractError {
     #[error("Buying Utility Over Slippages")]
     BuyingUtilityOverSlippages {},
     
-    #[error("Insufficient amount")]
+    #[error("FEE_MORE_THAN_AMOUNT")]
     InsufficientToken {},
 
-    #[error("Fee more than amount")]
+    #[error("FEE_MORE_THAN_AMOUNT")]
     InsufficientEthToSwap {},
 
-    #[error("Insufficient Output Amount")]
-    InsufficientOutputAmount {},
-
-    #[error("Pool And Token Mismatch")]
+    #[error("PoolAndTokenMismatch")]
     PoolAndTokenMismatch {},
 
-    #[error("Native Input Zero")]
+    #[error("NativeInputZero")]
     NativeInputZero {},
 
     #[error("TokenTypeMismatch")]

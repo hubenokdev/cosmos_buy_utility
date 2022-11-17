@@ -1,4 +1,4 @@
-# Escrow
+# Buy Token
 
 This is a simple single-use escrow contract. It creates a contract that can hold some
 native tokens and gives the power to an arbiter to release them to a pre-defined

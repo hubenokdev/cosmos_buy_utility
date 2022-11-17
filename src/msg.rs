@@ -26,7 +26,7 @@ pub enum ExecuteMsg {
         token_amount_per_native: Uint128,
         slippage_bips: Uint128,
         to: Addr,
-        pool_address: Addr,
+        router: Addr,
         platform_fee_bips: Uint128,
         gas_estimate: Uint128,
         deadline: Uint64

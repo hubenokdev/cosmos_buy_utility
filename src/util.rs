@@ -6,7 +6,7 @@ use cw20::{Balance, Cw20ExecuteMsg, Denom, BalanceResponse as CW20BalanceRespons
 use crate::error::ContractError;
 //use crate::state::CONFIG;
 //use crate::msg::Royalty;
-use wasmswap::msg::{ExecuteMsg as WasmswapExecuteMsg, QueryMsg as WasmswapQueryMsg, Token1ForToken2PriceResponse, InfoResponse as WasmswapInfoResponse, TokenSelect};
+use wasmswap::msg::{ExecuteMsg as WasmswapExecuteMsg, QueryMsg as WasmswapQueryMsg, Token1ForToken2PriceResponse, Token2ForToken1PriceResponse, InfoResponse as WasmswapInfoResponse, TokenSelect};
 
 pub const MAX_LIMIT: u32 = 30;
 pub const DEFAULT_LIMIT: u32 = 10;
@@ -170,7 +170,6 @@ pub fn get_swap_amount_and_denom_and_message(
     pool_address: Addr,
     denom: Denom,
     amount: Uint128,
-    amount_out_min: Uint128,
     recipient: Addr
 ) -> Result<(Uint128, Denom, Vec<CosmosMsg>), ContractError> {
 
@@ -179,14 +178,14 @@ pub fn get_swap_amount_and_denom_and_message(
         msg: to_binary(&WasmswapQueryMsg::Info {})?,
     }))?;
 
-    if denom != pool_info_response.token1_denom {
+    if denom != pool_info_response.token1_denom && denom != pool_info_response.token2_denom {
         return Err(ContractError::PoolAndTokenMismatch{});
     }
 
     let mut messages: Vec<CosmosMsg> = vec![];
     let swap_amount;
     let other_denom: Denom;
-    //if denom == pool_info_response.token1_denom {
+    if denom == pool_info_response.token1_denom {
         let token2_price_response: Token1ForToken2PriceResponse = querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
             contract_addr: pool_address.clone().into(),
             msg: to_binary(&WasmswapQueryMsg::Token1ForToken2Price {
@@ -196,31 +195,27 @@ pub fn get_swap_amount_and_denom_and_message(
 
         other_denom = pool_info_response.token2_denom;
         swap_amount = token2_price_response.token2_amount;
-
-        if swap_amount < amount_out_min {
-            return Err(ContractError::InsufficientOutputAmount{});
-        }
         let messages_swap = swap_token_messages(denom, TokenSelect::Token1, amount, swap_amount, pool_address.clone(), recipient)?;
         for i in 0..messages_swap.len() {
             messages.push(messages_swap[i].clone());
         }
 
-    // } else {
-    //     let token1_price_response: Token2ForToken1PriceResponse = querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
-    //         contract_addr: pool_address.clone().into(),
-    //         msg: to_binary(&WasmswapQueryMsg::Token2ForToken1Price {
-    //             token2_amount: amount
-    //         })?,
-    //     }))?;
+    } else {
+        let token1_price_response: Token2ForToken1PriceResponse = querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
+            contract_addr: pool_address.clone().into(),
+            msg: to_binary(&WasmswapQueryMsg::Token2ForToken1Price {
+                token2_amount: amount
+            })?,
+        }))?;
 
-    //     other_denom = pool_info_response.token1_denom;
-    //     swap_amount = token1_price_response.token1_amount;
+        other_denom = pool_info_response.token1_denom;
+        swap_amount = token1_price_response.token1_amount;
 
-    //     let messages_swap = swap_token_messages(denom, TokenSelect::Token2, amount, swap_amount, pool_address.clone(), recipient)?;
-    //     for i in 0..messages_swap.len() {
-    //         messages.push(messages_swap[i].clone());
-    //     }
-    // }
+        let messages_swap = swap_token_messages(denom, TokenSelect::Token2, amount, swap_amount, pool_address.clone(), recipient)?;
+        for i in 0..messages_swap.len() {
+            messages.push(messages_swap[i].clone());
+        }
+    }
     Ok((swap_amount, other_denom, messages))
 }
 
