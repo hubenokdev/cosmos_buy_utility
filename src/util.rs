@@ -4,97 +4,15 @@ use cosmwasm_std::{
 };
 use cw20::{Balance, Cw20ExecuteMsg, Denom, BalanceResponse as CW20BalanceResponse, Cw20QueryMsg};
 use crate::error::ContractError;
-//use crate::state::CONFIG;
-//use crate::msg::Royalty;
-use wasmswap::msg::{ExecuteMsg as WasmswapExecuteMsg, QueryMsg as WasmswapQueryMsg, Token1ForToken2PriceResponse, Token2ForToken1PriceResponse, InfoResponse as WasmswapInfoResponse, TokenSelect};
+
+use wasmswap::msg::{ExecuteMsg as WasmswapExecuteMsg, QueryMsg as WasmswapQueryMsg, Token1ForToken2PriceResponse, InfoResponse as WasmswapInfoResponse, TokenSelect};
 
 pub const MAX_LIMIT: u32 = 30;
 pub const DEFAULT_LIMIT: u32 = 10;
 pub const MAX_ORDER: u64 = 10;
 
-pub fn multiple() -> Uint128 { Uint128::from(100u128) }
-pub fn decimal() -> Uint128 { Uint128::from(1000000u128) }
-
-// pub fn check_enabled(
-//     storage: &mut dyn Storage,
-// ) -> Result<Response, ContractError> {
-//     let cfg = CONFIG.load(storage)?;
-//     if !cfg.enabled {
-//         return Err(ContractError::Disabled {})
-//     }
-//     Ok(Response::new().add_attribute("action", "check_enabled"))
-// }
-
-// pub fn check_owner(
-//     storage: &mut dyn Storage,
-//     address: Addr
-// ) -> Result<Response, ContractError> {
-//     let cfg = CONFIG.load(storage)?;
-    
-//     if address != cfg.owner {
-//         return Err(ContractError::Unauthorized {})
-//     }
-//     Ok(Response::new().add_attribute("action", "check_owner"))
-// }
-
-// pub fn execute_update_owner(
-//     storage: &mut dyn Storage,
-//     address: Addr,
-//     owner: Addr,
-// ) -> Result<Response, ContractError> {
-//     // authorize owner
-//     check_owner(storage, address)?;
-    
-//     CONFIG.update(storage, |mut exists| -> StdResult<_> {
-//         exists.owner = owner.clone();
-//         Ok(exists)
-//     })?;
-
-//     Ok(Response::new().add_attribute("action", "update_config").add_attribute("owner", owner.clone()))
-// }
-
-// pub fn execute_update_enabled (
-//     storage: &mut dyn Storage,
-//     address: Addr,
-//     enabled: bool
-// ) -> Result<Response, ContractError> {
-//     // authorize owner
-//     check_owner(storage, address)?;
-    
-//     CONFIG.update(storage, |mut exists| -> StdResult<_> {
-//         exists.enabled = enabled;
-//         Ok(exists)
-//     })?;
-
-//     Ok(Response::new().add_attribute("action", "update_enabled"))
-// }
-
-// pub fn execute_update_royalties (
-//     storage: &mut dyn Storage,
-//     address: Addr,
-//     maximum_royalty_fee: u32,
-//     royalties: Vec<Royalty>
-// ) -> Result<Response, ContractError> {
-//     // authorize owner
-//     check_owner(storage, address)?;
-
-//     let mut sum = 0;
-//     for item in royalties.clone() {
-//         sum += item.rate;
-//     }
-
-//     if sum > maximum_royalty_fee {
-//         return Err(crate::ContractError::ExceedsMaximumRoyaltyFee {});
-//     }
-    
-//     CONFIG.update(storage, |mut exists| -> StdResult<_> {
-//         exists.maximum_royalty_fee = maximum_royalty_fee;
-//         exists.royalties = royalties;
-//         Ok(exists)
-//     })?;
-
-//     Ok(Response::new().add_attribute("action", "update_royalties"))
-// }
+// pub fn multiple() -> Uint128 { Uint128::from(100u128) }
+// pub fn decimal() -> Uint128 { Uint128::from(1000000u128) }
 
 pub fn check_token_and_pool (
     querier: QuerierWrapper,
@@ -170,6 +88,7 @@ pub fn get_swap_amount_and_denom_and_message(
     pool_address: Addr,
     denom: Denom,
     amount: Uint128,
+    amount_out_min: Uint128,
     recipient: Addr
 ) -> Result<(Uint128, Denom, Vec<CosmosMsg>), ContractError> {
 
@@ -178,14 +97,14 @@ pub fn get_swap_amount_and_denom_and_message(
         msg: to_binary(&WasmswapQueryMsg::Info {})?,
     }))?;
 
-    if denom != pool_info_response.token1_denom && denom != pool_info_response.token2_denom {
+    if denom != pool_info_response.token1_denom {
         return Err(ContractError::PoolAndTokenMismatch{});
     }
 
     let mut messages: Vec<CosmosMsg> = vec![];
     let swap_amount;
     let other_denom: Denom;
-    if denom == pool_info_response.token1_denom {
+    //if denom == pool_info_response.token1_denom {
         let token2_price_response: Token1ForToken2PriceResponse = querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
             contract_addr: pool_address.clone().into(),
             msg: to_binary(&WasmswapQueryMsg::Token1ForToken2Price {
@@ -195,27 +114,16 @@ pub fn get_swap_amount_and_denom_and_message(
 
         other_denom = pool_info_response.token2_denom;
         swap_amount = token2_price_response.token2_amount;
+
+        if swap_amount < amount_out_min {
+            return Err(ContractError::InsufficientOutputAmount{});
+        }
         let messages_swap = swap_token_messages(denom, TokenSelect::Token1, amount, swap_amount, pool_address.clone(), recipient)?;
         for i in 0..messages_swap.len() {
             messages.push(messages_swap[i].clone());
         }
 
-    } else {
-        let token1_price_response: Token2ForToken1PriceResponse = querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
-            contract_addr: pool_address.clone().into(),
-            msg: to_binary(&WasmswapQueryMsg::Token2ForToken1Price {
-                token2_amount: amount
-            })?,
-        }))?;
 
-        other_denom = pool_info_response.token1_denom;
-        swap_amount = token1_price_response.token1_amount;
-
-        let messages_swap = swap_token_messages(denom, TokenSelect::Token2, amount, swap_amount, pool_address.clone(), recipient)?;
-        for i in 0..messages_swap.len() {
-            messages.push(messages_swap[i].clone());
-        }
-    }
     Ok((swap_amount, other_denom, messages))
 }
 

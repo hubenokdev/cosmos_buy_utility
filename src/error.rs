@@ -9,6 +9,9 @@ pub enum ContractError {
     #[error("Unauthorized")]
     Unauthorized {},
 
+    #[error("Unauthorized Role")]
+    UnauthorizedRole {},
+
     #[error("Escrow expired ")]
     Expired {},
 
@@ -18,16 +21,19 @@ pub enum ContractError {
     #[error("Buying Utility Over Slippages")]
     BuyingUtilityOverSlippages {},
     
-    #[error("FEE_MORE_THAN_AMOUNT")]
+    #[error("Insufficient amount")]
     InsufficientToken {},
 
-    #[error("FEE_MORE_THAN_AMOUNT")]
+    #[error("Fee more than amount")]
     InsufficientEthToSwap {},
 
-    #[error("PoolAndTokenMismatch")]
+    #[error("Insufficient Output Amount")]
+    InsufficientOutputAmount {},
+
+    #[error("Pool And Token Mismatch")]
     PoolAndTokenMismatch {},
 
-    #[error("NativeInputZero")]
+    #[error("Native Input Zero")]
     NativeInputZero {},
 
     #[error("TokenTypeMismatch")]

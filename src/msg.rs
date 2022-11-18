@@ -22,27 +22,29 @@ pub enum ExecuteMsg {
         enabled: bool
     },
     BuyToken { 
-        juno_amount: Uint128,
-        token_amount_per_native: Uint128,
-        slippage_bips: Uint128,
-        to: Addr,
-        router: Addr,
-        platform_fee_bips: Uint128,
-        gas_estimate: Uint128,
-        deadline: Uint64
-    },
+        juno_amount: Uint128
+        , token_amount_per_native: Uint128
+        , slippage_bips: Uint128
+        , recipient: Addr
+        , pool_address: Addr
+        , platform_fee_bips: Uint128
+        , gas_estimate: Uint128
+        , deadline: Uint64
+    },    
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
     /// Returns a human-readable representation of the arbiter.
-    GetAdmin {},
+    GetInfos {},    
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct AdminResponse {
     pub admin: Addr,
+    pub pending_platform_fee: Uint128,
+    pub blocktime: u64,
 }
 
 pub struct BotsResponse {
