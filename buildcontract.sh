@@ -103,11 +103,11 @@ RustBuild() {
     rm -rf release
     mkdir release
     
-    cd contracts
+    #cd contracts
     
-    cd escrow
-    RUSTFLAGS='-C link-arg=-s' cargo wasm
-    cp target/wasm32-unknown-unknown/release/*.wasm ../../release/
+    #cd escrow
+    RUSTFLAGS='-C link-arg=-s' cargo build --release --target wasm32-unknown-unknown
+    cp target/wasm32-unknown-unknown/release/*.wasm ./release/
 
     # cd cw721-base
     # RUSTFLAGS='-C link-arg=-s' cargo wasm
