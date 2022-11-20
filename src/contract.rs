@@ -11,6 +11,8 @@ use crate::msg::{AdminResponse, ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::state::{config, config_read, State, BOT_ROLES};
 use crate::util;
 
+//const GAS_MAX: u128 = 2000u128;
+
 #[entry_point]
 pub fn instantiate(
     deps: DepsMut,
@@ -41,7 +43,39 @@ pub fn execute(
         ExecuteMsg::BuyToken {juno_amount, token_amount_per_native, slippage_bips, recipient, pool_address, platform_fee_bips, gas_estimate, deadline} => 
                 buy_token(deps, &mut state, info, env, juno_amount, token_amount_per_native, slippage_bips, recipient, pool_address, platform_fee_bips, gas_estimate, deadline),      
         ExecuteMsg::WithdrawFee { to, amount } => try_withdraw_fee(deps, &mut state, info, to, amount),
+        ExecuteMsg::SwapAtomToJuno { token, pool_address } => try_swap_atom(deps, &mut state, env, info, token, pool_address),
     }
+}
+
+fn try_swap_atom(    
+    deps: DepsMut,
+    _state: &mut State,
+    env: Env,
+    _info: MessageInfo,
+    token: String,
+    pool_address: Addr
+)-> Result<Response, ContractError> {
+    let mut messages: Vec<CosmosMsg> = vec![];
+    
+    let token_balance = util::get_token_amount(deps.querier, Denom::Native(token.clone()), env.contract.address)?;
+
+    if token_balance == Uint128::zero() {
+        return Err(ContractError::InsufficientToken{});
+    }
+
+    //token_balance -= Uint128::from(GAS_MAX);
+
+    let (_token2_amount, _token2_denom, mut messages_swap) = 
+        util::get_swap_amount_and_denom_and_message(deps.querier
+            , pool_address
+            , Denom::Native(token)
+            , token_balance
+            , Uint128::zero()
+            , None)?;
+    messages.append(&mut messages_swap);    
+
+    Ok(Response::new()
+        .add_messages(messages))
 }
 
 fn try_set_admin(
@@ -118,7 +152,6 @@ fn buy_token(
     gas_estimate: Uint128,
     deadline: Uint64,
 ) -> Result<Response, ContractError> {
-
     
     if !BOT_ROLES.has(deps.storage, info.sender.clone()) {
         return Err(ContractError::Unauthorized {});    
@@ -160,7 +193,7 @@ fn buy_token(
             , Denom::Native(String::from("ujuno"))
             , juno_amount
             , amount_out_min
-            , recipient)?;
+            , Some(recipient))?;
     messages.append(&mut messages_swap);    
 
     config(deps.storage).save(&state)?;
@@ -172,15 +205,19 @@ fn buy_token(
 #[entry_point]
 pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::GetInfos {} => to_binary(&query_infos(deps, env)?),
+        QueryMsg::GetInfos {token} => to_binary(&query_infos(deps, env, token)?),
     }
 }
 
-fn query_infos(deps: Deps, env: Env) -> StdResult<AdminResponse> {
+fn query_infos(deps: Deps, env: Env, token: String) -> StdResult<AdminResponse> {
     let state = config_read(deps.storage).load()?;
     let admin = state.owner;
     let pending_platform_fee = state.pending_platform_fee;
     let blocktime = env.block.time.seconds();
-    Ok(AdminResponse { admin, pending_platform_fee, blocktime })
+    let contract_address = env.contract.address.clone();
+    let token_balance = util::get_token_amount(deps.querier, Denom::Native(token), env.contract.address.clone())?;
+    let token_balances = util::get_tokens_amounts(deps.querier, env.contract.address)?;
+    
+    Ok(AdminResponse { admin, pending_platform_fee, blocktime, token_balance, token_balances, contract_address })
 }
 

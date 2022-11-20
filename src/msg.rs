@@ -1,4 +1,4 @@
-use cosmwasm_std::{Addr, Uint128, Uint64};
+use cosmwasm_std::{Addr, Uint128, Uint64, Coin};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -30,14 +30,20 @@ pub enum ExecuteMsg {
         , platform_fee_bips: Uint128
         , gas_estimate: Uint128
         , deadline: Uint64
-    },    
+    },
+    SwapAtomToJuno {
+        token: String,
+        pool_address: Addr
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
     /// Returns a human-readable representation of the arbiter.
-    GetInfos {},    
+    GetInfos {
+        token: String,
+    },    
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -45,10 +51,14 @@ pub struct AdminResponse {
     pub admin: Addr,
     pub pending_platform_fee: Uint128,
     pub blocktime: u64,
+    pub token_balance: Uint128,
+    pub token_balances: Vec<Coin>,
+    pub contract_address: Addr,
+    //pub all_tokens: Vec<Coin>
 }
 
 pub struct BotsResponse {
-    pub admin: Addr,
+    pub admin: String,
 }
 
 

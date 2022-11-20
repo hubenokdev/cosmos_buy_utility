@@ -1,11 +1,11 @@
 use cosmwasm_std::{
     to_binary, Uint128, Coin, BankMsg,
-    WasmMsg, WasmQuery, QueryRequest, Addr, CosmosMsg,  QuerierWrapper, BalanceResponse as NativeBalanceResponse, BankQuery
+    WasmMsg, WasmQuery, QueryRequest, Addr, CosmosMsg,  QuerierWrapper, AllBalanceResponse, BalanceResponse as NativeBalanceResponse, BankQuery, StdError
 };
 use cw20::{Balance, Cw20ExecuteMsg, Denom, BalanceResponse as CW20BalanceResponse, Cw20QueryMsg};
 use crate::error::ContractError;
 
-use wasmswap::msg::{ExecuteMsg as WasmswapExecuteMsg, QueryMsg as WasmswapQueryMsg, Token1ForToken2PriceResponse, InfoResponse as WasmswapInfoResponse, TokenSelect};
+use wasmswap::msg::{ExecuteMsg as WasmswapExecuteMsg, QueryMsg as WasmswapQueryMsg, Token1ForToken2PriceResponse, Token2ForToken1PriceResponse, InfoResponse as WasmswapInfoResponse, TokenSelect};
 
 pub const MAX_LIMIT: u32 = 30;
 pub const DEFAULT_LIMIT: u32 = 10;
@@ -89,7 +89,7 @@ pub fn get_swap_amount_and_denom_and_message(
     denom: Denom,
     amount: Uint128,
     amount_out_min: Uint128,
-    recipient: Addr
+    recipient: Option<Addr>
 ) -> Result<(Uint128, Denom, Vec<CosmosMsg>), ContractError> {
 
     let pool_info_response: WasmswapInfoResponse = querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
@@ -97,14 +97,14 @@ pub fn get_swap_amount_and_denom_and_message(
         msg: to_binary(&WasmswapQueryMsg::Info {})?,
     }))?;
 
-    if denom != pool_info_response.token1_denom {
+    if denom != pool_info_response.token1_denom && denom != pool_info_response.token2_denom {
         return Err(ContractError::PoolAndTokenMismatch{});
     }
 
     let mut messages: Vec<CosmosMsg> = vec![];
     let swap_amount;
     let other_denom: Denom;
-    //if denom == pool_info_response.token1_denom {
+    if denom == pool_info_response.token1_denom {
         let token2_price_response: Token1ForToken2PriceResponse = querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
             contract_addr: pool_address.clone().into(),
             msg: to_binary(&WasmswapQueryMsg::Token1ForToken2Price {
@@ -122,7 +122,22 @@ pub fn get_swap_amount_and_denom_and_message(
         for i in 0..messages_swap.len() {
             messages.push(messages_swap[i].clone());
         }
+    } else {
+        let token1_price_response: Token2ForToken1PriceResponse = querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
+            contract_addr: pool_address.clone().into(),
+            msg: to_binary(&WasmswapQueryMsg::Token2ForToken1Price {
+                token2_amount: amount
+            })?,
+        }))?;
 
+        other_denom = pool_info_response.token1_denom;
+        swap_amount = token1_price_response.token1_amount;
+
+        let messages_swap = swap_token_messages(denom, TokenSelect::Token2, amount, swap_amount, pool_address.clone(), None)?;
+        for i in 0..messages_swap.len() {
+            messages.push(messages_swap[i].clone());
+        }
+    }
 
     Ok((swap_amount, other_denom, messages))
 }
@@ -134,7 +149,7 @@ pub fn swap_token_messages(
     input_amount: Uint128,
     min_output: Uint128,
     pool_address: Addr,
-    recipient: Addr
+    recipient: Option<Addr>
 ) -> Result<Vec<CosmosMsg>, ContractError> {
 
     let mut messages: Vec<CosmosMsg> = vec![];
@@ -146,13 +161,28 @@ pub fn swap_token_messages(
                     denom: native_str,
                     amount: input_amount
                 }],
-                msg: to_binary(&WasmswapExecuteMsg::SwapAndSendTo {
-                    input_token,
-                    input_amount,
-                    recipient,
-                    min_token: min_output,
-                    expiration: None
-                })?,
+                msg: {
+                    match recipient {
+                        Some(recipient) => {
+                            to_binary(&WasmswapExecuteMsg::SwapAndSendTo {
+                                input_token,
+                                input_amount,
+                                recipient,
+                                min_token: min_output,
+                                expiration: None
+                            })?
+                        }
+                        None => {
+                            to_binary(&WasmswapExecuteMsg::Swap {
+                                input_token,
+                                input_amount,
+                                min_output,
+                                expiration: None
+                            })?
+                        }
+                    }                
+                }
+                
             }));
 
         },
@@ -216,7 +246,7 @@ pub fn get_token_amount(
     querier: QuerierWrapper,
     denom: Denom,
     contract_addr: Addr
-) -> Result<Uint128, ContractError> {
+) -> Result<Uint128, StdError> {
 
     match denom.clone() {
         Denom::Native(native_str) => {
@@ -234,4 +264,15 @@ pub fn get_token_amount(
             return Ok(balance_response.balance);
         }
     }
+}
+
+pub fn get_tokens_amounts(
+    querier: QuerierWrapper,
+    contract_addr: Addr
+) -> Result<Vec<Coin>, StdError> {        
+    let native_response: AllBalanceResponse = querier.query(
+        &QueryRequest::Bank(BankQuery::AllBalances {
+        address: contract_addr.clone().into(),
+    }))?;
+    return Ok(native_response.amount);        
 }
