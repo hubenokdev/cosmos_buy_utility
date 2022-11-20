@@ -32,8 +32,6 @@ pub enum ExecuteMsg {
         , deadline: Uint64
     },
     SwapAtomToJuno {
-        token: String,
-        pool_address: Addr
     }
 }
 

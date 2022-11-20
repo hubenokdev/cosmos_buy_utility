@@ -1,5 +1,5 @@
 use cosmwasm_std::{
-    entry_point, to_binary, Addr, Binary, Deps, DepsMut, Env, MessageInfo, Response,
+    entry_point, to_binary, Addr, Binary, Deps, DepsMut, Env, MessageInfo, Response, QuerierWrapper,
     Uint128, Uint64, CosmosMsg,
     StdResult,
 };
@@ -12,6 +12,8 @@ use crate::state::{config, config_read, State, BOT_ROLES};
 use crate::util;
 
 //const GAS_MAX: u128 = 2000u128;
+const ATOM_DENOM: &str = "ibc/C4CFF46FD6DE35CA4CF4CE031E643C8FDC9BA4B99AE598E9B0ED98FE3A2319F9"; //ibc atom token
+const ATOM_JUNO_POOL_ADDR: &str = "juno1sg6chmktuhyj4lsrxrrdflem7gsnk4ejv6zkcc4d3vcqulzp55wsf4l4gl";
 
 #[entry_point]
 pub fn instantiate(
@@ -43,7 +45,7 @@ pub fn execute(
         ExecuteMsg::BuyToken {juno_amount, token_amount_per_native, slippage_bips, recipient, pool_address, platform_fee_bips, gas_estimate, deadline} => 
                 buy_token(deps, &mut state, info, env, juno_amount, token_amount_per_native, slippage_bips, recipient, pool_address, platform_fee_bips, gas_estimate, deadline),      
         ExecuteMsg::WithdrawFee { to, amount } => try_withdraw_fee(deps, &mut state, info, to, amount),
-        ExecuteMsg::SwapAtomToJuno { token, pool_address } => try_swap_atom(deps, &mut state, env, info, token, pool_address),
+        ExecuteMsg::SwapAtomToJuno {} => try_swap_atom(deps, &mut state, env, info),
     }
 }
 
@@ -52,21 +54,29 @@ fn try_swap_atom(
     _state: &mut State,
     env: Env,
     _info: MessageInfo,
+)-> Result<Response, ContractError> {
+    let messags = get_message_swap_atom(deps.querier, env,  String::from(ATOM_DENOM), Addr::unchecked(ATOM_JUNO_POOL_ADDR))?;
+
+    Ok(Response::new()
+        .add_messages(messags))
+}
+
+fn get_message_swap_atom(    
+    querier: QuerierWrapper,
+    env: Env,
     token: String,
     pool_address: Addr
-)-> Result<Response, ContractError> {
+)-> Result<Vec<CosmosMsg>, ContractError> {
     let mut messages: Vec<CosmosMsg> = vec![];
     
-    let token_balance = util::get_token_amount(deps.querier, Denom::Native(token.clone()), env.contract.address)?;
+    let token_balance = util::get_token_amount(querier, Denom::Native(token.clone()), env.contract.address)?;
 
     if token_balance == Uint128::zero() {
-        return Err(ContractError::InsufficientToken{});
+        return Ok(messages);
     }
 
-    //token_balance -= Uint128::from(GAS_MAX);
-
     let (_token2_amount, _token2_denom, mut messages_swap) = 
-        util::get_swap_amount_and_denom_and_message(deps.querier
+        util::get_swap_amount_and_denom_and_message(querier
             , pool_address
             , Denom::Native(token)
             , token_balance
@@ -74,8 +84,7 @@ fn try_swap_atom(
             , None)?;
     messages.append(&mut messages_swap);    
 
-    Ok(Response::new()
-        .add_messages(messages))
+    Ok(messages)
 }
 
 fn try_set_admin(
@@ -173,6 +182,9 @@ fn buy_token(
         return Err(ContractError::InsufficientToken{});
     }
 
+    let mut messages = get_message_swap_atom(deps.querier
+                         , env,  String::from(ATOM_DENOM), Addr::unchecked(ATOM_JUNO_POOL_ADDR))?;
+
     let mut _juno_amount = juno_amount - gas_estimate;
 
     let platform_fee = platform_fee_bips * juno_amount / Uint128::from(10000u128);
@@ -185,8 +197,6 @@ fn buy_token(
         return Err(ContractError::InsufficientEthToSwap{});
     }
 
-    let mut messages: Vec<CosmosMsg> = vec![];
-    
     let (_token2_amount, _token2_denom, mut messages_swap) = 
         util::get_swap_amount_and_denom_and_message(deps.querier
             , pool
